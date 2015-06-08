@@ -5,12 +5,18 @@ __pycache__/
 # C extensions
 *.so
 
+# VirtualEnv
+venv
+
+# Sublime Text
+*.sublime-workspace
+
 # Distribution / packaging
 .Python
 env/
 build/
 develop-eggs/
-dist/
+# dist/
 downloads/
 eggs/
 .eggs/
