@@ -5,23 +5,22 @@ import re
 import shutil
 import zipfile
 
-import Tkinter
-import tkFileDialog
+import tkinter as tk
+from tkinter import filedialog
+from tkinter import ttk
 
-import ttk
 
-
-class UAR(Tkinter.Tk):
+class UAR(tk.Tk):
 
     def __init__(self, parent):
 
-        Tkinter.Tk.__init__(self, parent)
+        tk.Tk.__init__(self, parent)
         self.parent = parent
 
-        self.zip_filename = Tkinter.StringVar(value='')
-        self.output_dir = Tkinter.StringVar(value='')
-        self.gzip_var = Tkinter.IntVar(value=1)
-        self.status_msg = Tkinter.StringVar(value='')
+        self.zip_filename = tk.StringVar(value='')
+        self.output_dir = tk.StringVar(value='')
+        self.gzip_var = tk.IntVar(value=1)
+        self.status_msg = tk.StringVar(value='')
 
         self.initialize()
 
@@ -33,40 +32,40 @@ class UAR(Tkinter.Tk):
 
         self.grid()
 
-        self.open_btn = Tkinter.Button(self, text='Select ZIP',
-                                       command=self.askopenfilename)
+        self.open_btn = tk.Button(self, text='Select ZIP',
+                                  command=self.askopenfilename)
         self.open_btn.grid(column=0, row=0, sticky='WE', padx=5, pady=5)
 
-        self.open_ent = Tkinter.Entry(self, textvariable=self.zip_filename,
-                                      state='readonly', relief='flat')
+        self.open_ent = tk.Entry(self, textvariable=self.zip_filename,
+                                 state='readonly', relief='flat')
         self.open_ent.grid(column=1, row=0, sticky='WE', padx=5, pady=5)
 
-        self.output_lbl = Tkinter.Label(self, text='Output Location:')
+        self.output_lbl = tk.Label(self, text='Output Location:')
         self.output_lbl.grid(column=0, row=1, sticky='E', padx=5, pady=5)
 
-        self.output_ent = Tkinter.Entry(self, textvariable=self.output_dir,
-                                        state='readonly', relief='flat')
+        self.output_ent = tk.Entry(self, textvariable=self.output_dir,
+                                   state='readonly', relief='flat')
         self.output_ent.grid(column=1, row=1, sticky='WE', padx=5, pady=5)
 
-        self.options_lbl = Tkinter.Label(self, text='Options:')
+        self.options_lbl = tk.Label(self, text='Options:')
         self.options_lbl.grid(column=0, row=2, sticky='E', padx=5, pady=5)
 
-        self.opt_gzip_chb = Tkinter.Checkbutton(self,
-                                                text='Uncompress .gz images',
-                                                variable=self.gzip_var)
+        self.opt_gzip_chb = tk.Checkbutton(self,
+                                           text='Uncompress .gz images',
+                                           variable=self.gzip_var)
         self.opt_gzip_chb.grid(column=1, row=2, sticky='W')
 
-        self.extract_btn = Tkinter.Button(self, text='Extract images',
-                                          state='disabled',
-                                          command=self.extract_images)
+        self.extract_btn = tk.Button(self, text='Extract images',
+                                     state='disabled',
+                                     command=self.extract_images)
         self.extract_btn.grid(column=0, row=3, sticky='WE', padx=5, pady=5)
 
         self.extract_progbar = ttk.Progressbar(self, orient='horizontal',
                                                length=150, mode='determinate')
         self.extract_progbar.grid(column=1, row=3, sticky='WE', padx=5, pady=5)
 
-        self.statusbar = Tkinter.Entry(self, textvariable=self.status_msg,
-                                       state='readonly', relief='flat')
+        self.statusbar = tk.Entry(self, textvariable=self.status_msg,
+                                  state='readonly', relief='flat')
         self.statusbar.grid(column=0, row=4, columnspan=2, sticky='WE',
                             padx=5, pady=5)
 
@@ -84,7 +83,7 @@ class UAR(Tkinter.Tk):
         file_opt['parent'] = self.parent
         file_opt['title'] = 'Choose the zipped results'
 
-        filename = tkFileDialog.askopenfilename(**file_opt)
+        filename = filedialog.askopenfilename(**file_opt)
 
         if filename != '':
             self.zip_filename.set(filename)
@@ -92,7 +91,6 @@ class UAR(Tkinter.Tk):
 
             # create a folder named as the zip file to extract into
             self.output_dir.set(os.path.splitext(self.zip_filename.get())[0])
-            print 'Extracting to', self.output_dir.get()
             if not os.path.exists(self.output_dir.get()):
                 os.mkdir(self.output_dir.get())
         else:
