@@ -9,7 +9,7 @@ Usage
 3. Click extract images
 
 
-Authors
--------
+Author
+------
 
-Written by Hugo Cachitas (hugo.cachitas@neuro.fchampalimaud.org)
+Written by Hugo Cachitas
