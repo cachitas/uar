@@ -158,6 +158,10 @@ class UAR(Tkinter.Tk):
         os.remove(source.name)
 
 
-if __name__ == '__main__':
+def main():
     app = UAR(None)
     app.mainloop()
+
+
+if __name__ == '__main__':
+    main()
