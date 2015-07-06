@@ -1,6 +1,12 @@
 UAR: Unzip Alignment Results
 ============================
 
+Requirements
+------------
+
+- Python 3.4.3 (64 bit)
+
+
 Usage
 -----
 
