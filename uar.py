@@ -127,7 +127,7 @@ class UAR(tk.Tk):
                             continue
 
                         # filter files: only want those having 'wraped'
-                        if re.search(r'_warped\.nii', name2) is None:
+                        if re.search(r'_warped\.', name2) is None:
                             continue
 
                         # copy file (taken from zipfile's extract)
