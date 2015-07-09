@@ -4,10 +4,15 @@ import os
 import re
 import shutil
 import zipfile
+import logging
 
 import tkinter as tk
 from tkinter import filedialog
 from tkinter import ttk
+
+
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 
 class UAR(tk.Tk):
@@ -27,6 +32,7 @@ class UAR(tk.Tk):
     def initialize(self):
         """Initialize the GUI.
         """
+        logger.debug('Initializing the GUI')
         self.title('Unzip Alignment Results')
         self.minsize(width=600, height=50)
 
@@ -83,6 +89,7 @@ class UAR(tk.Tk):
         file_opt['parent'] = self.parent
         file_opt['title'] = 'Choose the zipped results'
 
+        logger.debug('Opening file dialog')
         filename = filedialog.askopenfilename(**file_opt)
 
         if filename != '':
@@ -91,7 +98,9 @@ class UAR(tk.Tk):
 
             # create a folder named as the zip file to extract into
             self.output_dir.set(os.path.splitext(self.zip_filename.get())[0])
+            logger.debug('Checking if output folder already exists')
             if not os.path.exists(self.output_dir.get()):
+                logger.debug('Creating output folder')
                 os.mkdir(self.output_dir.get())
         else:
             self.extract_btn.config(state='disabled')
