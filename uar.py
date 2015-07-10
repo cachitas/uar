@@ -126,7 +126,7 @@ class UAR(tk.Tk):
                         if not filename:
                             continue
 
-                        # filter files: only want those having 'wraped'
+                        # filter files: only want those having 'warped'
                         if re.search(r'_warped\.nii', name2) is None:
                             continue
 
