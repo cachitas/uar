@@ -93,14 +93,34 @@ def extract_files(zipfilename, pattern, output_dir):
                 shutil.copyfileobj(source, target)
 
 
-def uncompress_gzipped_file(file_obj):
-    # FIXME
-    assert file_obj.name.endswith('.gz')
-    source = gzip.open(file_obj.name, 'rb')
-    target = open(source.name[:-3], 'wb')
+def uncompress_gzipped_file(filepath):
+    assert filepath.endswith('.gz')
+    logger.debug("Decompressing {}".format(filepath))
+    source = gzip.open(filepath, 'rb')
+    target = open(filepath[:-3], 'wb')
     with source, target:
         target.write(source.read())
-    os.remove(source.name)
+    logger.debug("Removing {}".format(filepath))
+    os.remove(filepath)
+
+
+def uncompress_gzipped_files(directory):
+    for filename in os.listdir(directory):
+        filepath = os.path.join(directory, filename)
+        uncompress_gzipped_file(filepath)
+
+
+def move_files_inside_folders(directory):
+    for filename in os.listdir(directory):
+        filepath = os.path.join(directory, filename)
+
+        new_dir_name = os.path.splitext(filename)[0]
+        new_dir_path = os.path.join(directory, new_dir_name)
+        os.mkdir(new_dir_path)
+
+        new_filepath = os.path.join(new_dir_path, filename)
+        logger.debug("Moving {} to {}".format(filepath, new_filepath))
+        shutil.move(filepath, new_filepath)
 
 
 if __name__ == '__main__':
@@ -111,3 +131,7 @@ if __name__ == '__main__':
     # retrieve_inner_zipfiles('test.zip')
     # extract_files('test.zip', r'001', 't2')
     extract_nested_zips('test.zip', r'_warped\.')
+
+    uncompress_gzipped_files('test')
+
+    move_files_inside_folders('test')
