@@ -1,174 +1,113 @@
+"""
+UAR - Unzip Alignment Results
+=============================
+"""
+
+import logging
 import gzip
 import io
 import os
 import re
 import shutil
 import zipfile
-import logging
-
-import tkinter as tk
-from tkinter import filedialog
-from tkinter import ttk
 
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 
-class UAR(tk.Tk):
+def extract_nested_zips(zipfilename, pattern):
+    """Extract nested zipped files.
 
-    def __init__(self, parent):
+    Extracts desired files from within zipped files inside the given
+    zipped file.
 
-        tk.Tk.__init__(self, parent)
-        self.parent = parent
+    The files extracted are placed inside a folder named after the
+    provided zipped file.
+    """
 
-        self.zip_filename = tk.StringVar(value='')
-        self.output_dir = tk.StringVar(value='')
-        self.gzip_var = tk.IntVar(value=1)
-        self.status_msg = tk.StringVar(value='')
+    output_dir = os.path.splitext(zipfilename)[0]
 
-        self.initialize()
+    inner_zipfiles = retrieve_inner_zipfiles(zipfilename)
 
-    def initialize(self):
-        """Initialize the GUI.
-        """
-        logger.debug('Initializing the GUI')
-        self.title('Unzip Alignment Results')
-        self.minsize(width=600, height=50)
+    with zipfile.ZipFile(zipfilename, 'r') as zfile:
+        for i, name in enumerate(inner_zipfiles):
+            zfiledata = io.BytesIO(zfile.read(name))
 
-        self.grid()
-
-        self.open_btn = tk.Button(self, text='Select ZIP',
-                                  command=self.askopenfilename)
-        self.open_btn.grid(column=0, row=0, sticky='WE', padx=5, pady=5)
-
-        self.open_ent = tk.Entry(self, textvariable=self.zip_filename,
-                                 state='readonly', relief='flat')
-        self.open_ent.grid(column=1, row=0, sticky='WE', padx=5, pady=5)
-
-        self.output_lbl = tk.Label(self, text='Output Location:')
-        self.output_lbl.grid(column=0, row=1, sticky='E', padx=5, pady=5)
-
-        self.output_ent = tk.Entry(self, textvariable=self.output_dir,
-                                   state='readonly', relief='flat')
-        self.output_ent.grid(column=1, row=1, sticky='WE', padx=5, pady=5)
-
-        self.options_lbl = tk.Label(self, text='Options:')
-        self.options_lbl.grid(column=0, row=2, sticky='E', padx=5, pady=5)
-
-        self.opt_gzip_chb = tk.Checkbutton(self,
-                                           text='Uncompress .gz images',
-                                           variable=self.gzip_var)
-        self.opt_gzip_chb.grid(column=1, row=2, sticky='W')
-
-        self.extract_btn = tk.Button(self, text='Extract images',
-                                     state='disabled',
-                                     command=self.extract_images)
-        self.extract_btn.grid(column=0, row=3, sticky='WE', padx=5, pady=5)
-
-        self.extract_progbar = ttk.Progressbar(self, orient='horizontal',
-                                               length=150, mode='determinate')
-        self.extract_progbar.grid(column=1, row=3, sticky='WE', padx=5, pady=5)
-
-        self.statusbar = tk.Entry(self, textvariable=self.status_msg,
-                                  state='readonly', relief='flat')
-        self.statusbar.grid(column=0, row=4, columnspan=2, sticky='WE',
-                            padx=5, pady=5)
-
-        self.grid_columnconfigure(1, weight=1)
-        self.resizable(True, False)
-
-    def askopenfilename(self):
-        """Returns the name of the file chosen.
-        """
-        file_opt = {}
-        file_opt['defaultextension'] = '.zip'
-        file_opt['filetypes'] = [('zip files', '.zip'), ('all files', '.*')]
-        file_opt['initialdir'] = '~/Downloads'
-        file_opt['initialfile'] = ''
-        file_opt['parent'] = self.parent
-        file_opt['title'] = 'Choose the zipped results'
-
-        logger.debug('Opening file dialog')
-        filename = filedialog.askopenfilename(**file_opt)
-
-        if filename != '':
-            self.zip_filename.set(filename)
-            self.extract_btn.config(state='normal')
-
-            # create a folder named as the zip file to extract into
-            self.output_dir.set(os.path.splitext(self.zip_filename.get())[0])
-            logger.debug('Checking if output folder already exists')
-            if not os.path.exists(self.output_dir.get()):
-                logger.debug('Creating output folder')
-                os.mkdir(self.output_dir.get())
-        else:
-            self.extract_btn.config(state='disabled')
-
-    def extract_images(self):
-        """Extract images.
-        """
-
-        # inspect the main zip file to account for inner ones
-        files_to_extract = []
-        self.status_msg.set('Inspecting...')
-        self.update_idletasks()
-        with zipfile.ZipFile(self.zip_filename.get(), 'r') as zfile:
-            for name in zfile.namelist():
-                if re.search(r'\.zip$', name, flags=re.IGNORECASE) != None:
-                    files_to_extract.append(name)
-
-        self.extract_progbar['value'] = 0
-        self.extract_progbar['maximum'] = len(files_to_extract)
-
-        with zipfile.ZipFile(self.zip_filename.get(), 'r') as zfile:
-            for i, name in enumerate(files_to_extract):
-                self.status_msg.set('Unzipping {}'.format(
-                    os.path.basename(name)))
-
-                zfiledata = io.BytesIO(zfile.read(name))
-                with zipfile.ZipFile(zfiledata) as zfile2:
-                    for name2 in zfile2.namelist():
-                        filename = os.path.basename(name2)
-
-                        # skip directories
-                        if not filename:
-                            continue
-
-                        # filter files: only want those having 'wraped'
-                        if re.search(r'_warped\.', name2) is None:
-                            continue
-
-                        # copy file (taken from zipfile's extract)
-                        source = zfile2.open(name2)
-                        target = open(os.path.join(
-                            self.output_dir.get(), filename), "wb")
-                        with source, target:
-                            shutil.copyfileobj(source, target)
-
-                        # uncompress the image if asked to
-                        if self.gzip_var.get() == 1:
-                            self.uncompress_gzipped_file(target)
-
-                self.extract_progbar["value"] = i + 1
-                self.update_idletasks()
-            else:
-                self.status_msg.set('Done')
-
-    @staticmethod
-    def uncompress_gzipped_file(file_obj):
-        assert file_obj.name.endswith('.gz')
-        source = gzip.open(file_obj.name, 'rb')
-        target = open(source.name[:-3], 'wb')
-        with source, target:
-            target.write(source.read())
-        os.remove(source.name)
+            extract_files(zfiledata, pattern, output_dir)
 
 
-def main():
-    app = UAR(None)
-    app.mainloop()
+def retrieve_inner_zipfiles(zipfilename):
+    """Inspect the given zipped file and retrieve the inner ones.
+    """
+
+    inner_zipfiles = []
+
+    logger.debug('Looking for zipped files inside {}'.format(zipfilename))
+    with zipfile.ZipFile(zipfilename, 'r') as zfile:
+        for name in zfile.namelist():
+            if re.search(r'\.zip$', name, flags=re.IGNORECASE) != None:
+                inner_zipfiles.append(name)
+    logger.debug('Found {} zipped files'.format(len(inner_zipfiles)))
+    return inner_zipfiles
+
+
+def extract_files(zipfilename, pattern, output_dir):
+    """Extracts all files that match a specific `pattern` from
+    a zipped file.
+    This stores files in memory!
+    """
+
+    try:
+        os.mkdir(output_dir)
+    except OSError:
+        logger.debug("Output directory already exists '{}'".format(output_dir))
+    else:
+        logger.debug("Creating output directory '{}'".format(output_dir))
+
+    # Compile the pattern if needed
+    if not hasattr(pattern, 'search'):
+        pattern = re.compile(pattern)
+
+    logger.debug('Reading {}'.format(zipfilename))
+
+    with zipfile.ZipFile(zipfilename, 'r') as zfile:
+        for name in zfile.namelist():
+
+            filename = os.path.basename(name)
+
+            # skip directories
+            if not filename:
+                continue
+
+            # filter files using the given pattern
+            if pattern.search(name) is None:
+                continue
+
+            # copy file (taken from zipfile's extract)
+            source = zfile.open(name)
+            target = open(os.path.join(output_dir, filename), 'wb')
+            with source, target:
+                logger.debug("Extracting {s} to {t}".format(
+                             s=source.name, t=target.name))
+                shutil.copyfileobj(source, target)
+
+
+def uncompress_gzipped_file(file_obj):
+    # FIXME
+    assert file_obj.name.endswith('.gz')
+    source = gzip.open(file_obj.name, 'rb')
+    target = open(source.name[:-3], 'wb')
+    with source, target:
+        target.write(source.read())
+    os.remove(source.name)
 
 
 if __name__ == '__main__':
-    main()
+
+    if os.path.exists('test'):
+        shutil.rmtree('test')
+
+    # retrieve_inner_zipfiles('test.zip')
+    # extract_files('test.zip', r'001', 't2')
+    extract_nested_zips('test.zip', r'_warped\.')
