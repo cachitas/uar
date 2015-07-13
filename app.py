@@ -75,14 +75,18 @@ class OptionsFrame(ttk.LabelFrame):
         self._init_ui()
 
     def _init_ui(self):
-        self.gzip_chb = tk.Checkbutton(self,
-                                       text='Decompress .gz images',
-                                       variable=self.gzip_var)
+        self.gzip_chb = tk.Checkbutton(
+            self,
+            text='Decompress .gz files',
+            variable=self.gzip_var
+        )
         self.gzip_chb.pack(anchor='w', expand=True)
 
-        self.tofolder_chb = tk.Checkbutton(self,
-                                           text='Extract item into a folder',
-                                           variable=self.tofolder_var)
+        self.tofolder_chb = tk.Checkbutton(
+            self,
+            text='Extract each item into its folder',
+            variable=self.tofolder_var
+        )
         self.tofolder_chb.pack(anchor='w', expand=True)
 
 
