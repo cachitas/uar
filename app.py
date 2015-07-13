@@ -1,8 +1,6 @@
-import os
 import logging
-import threading
-import zipfile
-import io
+import re
+import queue
 
 import tkinter as tk
 from tkinter import ttk
@@ -13,17 +11,14 @@ import uar
 from texthandler import TextHandler
 
 
-logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 
 class ZipFileFrame(ttk.LabelFrame):
 
     def __init__(self, master):
         super().__init__(master, text=' ZIP File: ')
-        self.logger = logging.getLogger(__name__)
         self._init_ui()
-
-        self.reset_state()
 
     def _init_ui(self):
         self.browse_btn = ttk.Button(self,
@@ -36,6 +31,7 @@ class ZipFileFrame(ttk.LabelFrame):
 
         self.extract_btn = ttk.Button(self,
                                       text='Extract',
+                                      state='disabled',
                                       command=self._on_extract)
         self.extract_btn.pack(side='top',
                               padx=5, pady=5,
@@ -43,7 +39,7 @@ class ZipFileFrame(ttk.LabelFrame):
                               expand=True)
 
     def _on_browse(self):
-        self.logger.debug('Opening a file dialog')
+        logger.debug('Opening a file dialog')
         file_opt = dict(
             defaultextension='.zip',
             filetypes=[('zip files', '.zip')],
@@ -56,38 +52,24 @@ class ZipFileFrame(ttk.LabelFrame):
         filename = filedialog.askopenfilename(**file_opt)
 
         if filename != '':
-            self.logger.info("File '%s' selected", filename)
-            self.zipfilename = filename
+            self.master._reset()
+            logger.info("File '%s' selected", filename)
+            self.master.zipfilename = filename
             self.extract_btn.config(state='normal')
         else:
-            self.logger.debug("Dialog canceled")
-            self.reset_state()
+            logger.debug("Dialog canceled")
+            self.zipfilename = None
+            self.extract_btn.config(state='disabled')
 
     def _on_extract(self):
-        self.logger.debug('Starting the extraction')
-
-        # Get options values
-        gzip_var = self.master.options_frame.gzip_var
-        tofolder_var = self.master.options_frame.tofolder_var
-
-        # Inspect zip file and set progressbar maximum value
-        self.master.inspect_zipfile()
-
-        # Extract the files
-        self.master.extract_nested_zipfile()
-
-    def reset_state(self):
-        self.logger.debug("Reset state to initial values")
-        self.zipfilename = None
-        self.output_dir = None
-        self.extract_btn.config(state='disabled')
+        logger.debug('Starting the extraction')
+        self.master.extract()
 
 
 class OptionsFrame(ttk.LabelFrame):
 
     def __init__(self, master):
         super().__init__(master, text=' Options: ')
-        self.logger = logging.getLogger(__name__)
         self.gzip_var = tk.IntVar(value=1)
         self.tofolder_var = tk.IntVar(value=1)
         self._init_ui()
@@ -108,14 +90,14 @@ class LoggerFrame(ttk.LabelFrame):
 
     def __init__(self, master):
         super().__init__(master, text=' Progress: ')
-        self.logger = logging.getLogger(__name__)
         self._init_ui()
 
         text_handler = TextHandler(self.st)
-        self.logger.addHandler(text_handler)
+        logger.addHandler(text_handler)
+        uar.logger.addHandler(text_handler)  # shows logging from the module
 
     def _init_ui(self):
-        self.pb = ttk.Progressbar(self)
+        self.pb = ttk.Progressbar(self, mode='indeterminate')
         self.pb.pack(padx=5, pady=5,
                      ipadx=5, ipady=5,
                      fill='x', expand=False)
@@ -134,13 +116,16 @@ class App(tk.Tk):
 
     def __init__(self):
         super().__init__()
-        self.logger = logging.getLogger(__name__)
         self._init_ui()
 
-        self.progressbar = self.logger_frame.pb
+        self.pattern = re.compile(r'_warped\.')
+        self.tasks_queue = queue.Queue()
+
+        self._reset()
+        self.process_queue()
 
     def _init_ui(self):
-        self.logger.debug('Initializing the GUI...')
+        logger.debug('Initializing the GUI...')
         self.title('Unzip Alignment Results')
         self.minsize(width=500, height=200)
 
@@ -167,63 +152,66 @@ class App(tk.Tk):
         self.rowconfigure(0, weight=0)
         self.rowconfigure(1, weight=1)
 
-    def _check_worker_thread(self, thread, logmsg=None,
-                             widget=None, widget_config={'state': 'normal'}):
-        """Check worker thread status.
-        Can also provide a `widget` to enable when thread is done working.
-        This is the default, but can be changed with the argument
-        `widget_config`.
+    def _reset(self):
+        """Resets all runtime attributes to their initial values.
+        Is called every time a file is successfully extracted to prepare
+        the application for another one.
         """
-        if thread.is_alive():
-            self.after(500, self._check_worker_thread,
-                       thread, logmsg, widget, widget_config)
+        logger.debug('Resetting application state')
+        self.zipfilename = None
+        self.extractor = None  # Thread used to extract
+        self.logger_frame.pb.config(value=0, maximum=100, mode='determinate')
+
+    def process_queue(self):
+        try:
+            # Check if there's a task to do
+            task = self.tasks_queue.get(block=False)
+        except queue.Empty:
+            self.after(500, self.process_queue)
         else:
-            if logmsg is not None:
-                self.logger.info(logmsg)
-            if widget is not None:
-                widget.config(**widget_config)
+            # Do the task
+            task, kwargs = task
 
-    def inspect_zipfile(self):
-        """Inspect given zip file in order to set the progress bar
-        maximum value.
-        During this process the progress bar is in indeterminate state.
+            if task == 'running':
+                logger.debug("Disabling 'Extract' button")
+                self.input_frame.extract_btn.config(**kwargs)
+
+            if task == 'update_progressbar_maximum':
+                logger.debug('Updating progressbar maximum value')
+                self.logger_frame.pb.config(**kwargs)
+
+            if task == 'update_progressbar_value':
+                logger.debug(
+                    'Updating progressbar value to {value}'.format(**kwargs))
+                self.logger_frame.pb.config(**kwargs)
+
+            if task == 'done':
+                logger.info("Done!")
+
+            # Check quickly for another task
+            self.after(1, self.process_queue)
+
+    def extract(self):
+        """Extract.
         """
-        zf = self.input_frame.zipfilename
-        self.logger.info("Inspecting '%s'", zf)
+        extractor = uar.UAR(
+            zipfilename=self.zipfilename,
+            pattern=self.pattern,
+            options={
+                'degzip': self.options_frame.gzip_var.get(),
+                'tofolder': self.options_frame.tofolder_var.get(),
+            },
+            tasks_queue=self.tasks_queue,
+        )
 
-        self.logger_frame.pb.config(mode='indeterminate')
-        self.logger_frame.pb.start()
-        inner_zfs = uar.retrieve_inner_zipfiles(zf)
-        self.logger_frame.pb.stop()
-
-        self.logger_frame.pb.config(mode='determinate',
-                                    value=0,
-                                    maximum=len(inner_zfs))
-
-    def extract_nested_zipfile(self):
-        """Extract files using `uar` methodology.
-        """
-        zf = self.input_frame.zipfilename
-        pattern = r'_warped\.'
-        output_dir = os.path.splitext(zf)[0]
-        inner_zipfiles = uar.retrieve_inner_zipfiles(zf)
-
-        def extract_threaded(zf, pattern, inner_zipfiles, output_dir):
-            with zipfile.ZipFile(zf, 'r') as zfile:
-                for i, name in enumerate(inner_zipfiles):
-                    self.logger.info("Extracting '%s'", name)
-                    zfiledata = io.BytesIO(zfile.read(name))
-                    uar.extract_files(zfiledata, pattern, output_dir)
-                    self.logger_frame.pb['value'] = i + 1
-
-        t = threading.Thread(target=extract_threaded,
-                             args=(zf, pattern, inner_zipfiles, output_dir))
-        t.start()
-        self._check_worker_thread(
-            t, logmsg="Done. Output is in '{}'".format(output_dir))
+        extractor.start()
 
 
 def main():
+    logging.basicConfig(
+        level=logging.INFO,
+        format='[%(asctime)s][%(threadName)s] %(message)s',
+    )
     app = App()
     app.mainloop()
 
