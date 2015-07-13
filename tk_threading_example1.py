@@ -35,16 +35,21 @@ class App(tk.Tk):
         self.btn2.config(state='disabled')
         t = threading.Thread(target=self.calc)
         t.start()
-        self.check_worker_thread(t, self.btn2)
+        self._check_worker_thread(t, self.btn2)
 
-    def check_worker_thread(self, thread, widget=None):
+    def _check_worker_thread(self, thread,
+                             widget=None, widget_config={'state': 'normal'}):
+        """Check worker thread status.
+        Can also provide a `widget` to enable when thread is done working.
+        This is the default, but can be changed with the argument
+        `widget_config`.
+        """
         if thread.is_alive():
-            print('Thread is alive!')
-            self.after(1000, self.check_worker_thread, thread, widget)
+            self.after(1000, self._check_worker_thread,
+                       thread, widget, widget_config)
         else:
-            print('Thread died :(')
             if widget is not None:
-                widget.config(state='normal')
+                widget.config(**widget_config)
 
 
 if __name__ == '__main__':
