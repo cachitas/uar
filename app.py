@@ -167,14 +167,17 @@ class App(tk.Tk):
             # Check if there's a task to do
             task = self.tasks_queue.get(block=False)
         except queue.Empty:
-            self.after(500, self.process_queue)
+            self.after(100, self.process_queue)
         else:
             # Do the task
             task, kwargs = task
 
             if task == 'running':
-                logger.debug("Disabling 'Extract' button")
-                self.input_frame.extract_btn.config(**kwargs)
+                logger.debug("Disabling 'Input' and 'Options' frames")
+                for child in self.input_frame.winfo_children():
+                    child.configure(state='disabled')
+                for child in self.options_frame.winfo_children():
+                    child.configure(state='disabled')
 
             if task == 'update_progressbar_maximum':
                 logger.debug('Updating progressbar maximum value')
@@ -186,6 +189,13 @@ class App(tk.Tk):
                 self.logger_frame.pb.config(**kwargs)
 
             if task == 'done':
+                logger.debug("Enabling 'Input' and 'Options' frames")
+                for child in self.input_frame.winfo_children():
+                    child.configure(state='normal')
+                for child in self.options_frame.winfo_children():
+                    child.configure(state='normal')
+                logger.debug("Disabling 'Extract' button")
+                self.input_frame.extract_btn.config(state='disabled')
                 logger.info("Done!")
 
             # Check quickly for another task
