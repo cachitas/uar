@@ -119,6 +119,7 @@ def extract_nested_zips(zipfilename, pattern):
     """
 
     output_dir = os.path.splitext(zipfilename)[0]
+    prepare_output_dir(output_dir)
 
     inner_zipfiles = retrieve_inner_zipfiles(zipfilename)
 
@@ -127,6 +128,26 @@ def extract_nested_zips(zipfilename, pattern):
             zfiledata = io.BytesIO(zfile.read(name))
 
             extract_files(zfiledata, pattern, output_dir)
+
+
+def prepare_output_dir(output_dir):
+    """Create output directory.
+    If one directory with the same name already exists, remove it
+    and create again. There may be a better way to do this...
+    """
+    try:
+        logger.debug("Creating output directory '{}'".format(output_dir))
+        os.mkdir(output_dir)
+    except OSError:
+        logger.debug("Output directory already exists."
+                     " Removing '{}'".format(output_dir))
+        shutil.rmtree(output_dir)
+        time.sleep(.5)  # wait for the IO operations to complete
+        prepare_output_dir(output_dir)
+    else:
+        logger.debug("Output directory created '{}'".format(output_dir))
+    finally:
+        time.sleep(.5)  # wait for the IO operations to complete
 
 
 def retrieve_inner_zipfiles(zipfilename):
@@ -149,13 +170,6 @@ def extract_files(zipfilename, pattern, output_dir):
     a zipped file.
     This stores files in memory!
     """
-
-    try:
-        os.mkdir(output_dir)
-    except OSError:
-        logger.debug("Output directory already exists '{}'".format(output_dir))
-    else:
-        logger.debug("Creating output directory '{}'".format(output_dir))
 
     # Compile the pattern if needed
     if not hasattr(pattern, 'search'):
