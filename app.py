@@ -123,10 +123,10 @@ class App(tk.Tk):
         self._init_ui()
 
         self.pattern = re.compile(r'_warped\.')
-        self.tasks_queue = queue.Queue()
+        self.tasks_queue = queue.Queue(maxsize=1)
 
         self._reset()
-        self.process_queue()
+        self._process_queue()
 
     def _init_ui(self):
         logger.debug('Initializing the GUI...')
@@ -166,22 +166,18 @@ class App(tk.Tk):
         self.extractor = None  # Thread used to extract
         self.logger_frame.pb.config(value=0, maximum=100, mode='determinate')
 
-    def process_queue(self):
+    def _process_queue(self):
         try:
             # Check if there's a task to do
             task = self.tasks_queue.get(block=False)
         except queue.Empty:
-            self.after(100, self.process_queue)
+            self.after(100, self._process_queue)
         else:
             # Do the task
             task, kwargs = task
 
-            if task == 'running':
-                logger.debug("Disabling 'Input' and 'Options' frames")
-                for child in self.input_frame.winfo_children():
-                    child.configure(state='disabled')
-                for child in self.options_frame.winfo_children():
-                    child.configure(state='disabled')
+            if task == '_disable_input_wigets':
+                getattr(self, task)()
 
             if task == 'update_progressbar_maximum':
                 logger.debug('Updating progressbar maximum value')
@@ -202,13 +198,23 @@ class App(tk.Tk):
                 self.input_frame.extract_btn.config(state='disabled')
                 logger.info("Done!")
 
+            self.tasks_queue.task_done()
+
             # Check quickly for another task
-            self.after(1, self.process_queue)
+            self.after(20, self._process_queue)
+
+    def _disable_input_wigets(self):
+        logger.debug("Disabling 'Input' and 'Options' frames")
+        for child in self.input_frame.winfo_children():
+            child.configure(state='disabled')
+        for child in self.options_frame.winfo_children():
+            child.configure(state='disabled')
 
     def extract(self):
         """Extract.
         """
-        extractor = uar.UAR(
+        logger.debug("Spawning and starting a new Thread")
+        self.extractor = uar.UAR(
             zipfilename=self.zipfilename,
             pattern=self.pattern,
             options={
