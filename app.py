@@ -158,13 +158,12 @@ class App(tk.Tk):
 
     def _reset(self):
         """Resets all runtime attributes to their initial values.
-        Is called every time a file is successfully extracted to prepare
-        the application for another one.
+        It is used to prepare the application to extract another file.
         """
         logger.debug('Resetting application state')
         self.zipfilename = None
-        self.extractor = None  # Thread used to extract
-        self.logger_frame.pb.config(value=0, maximum=100, mode='determinate')
+        self.extractor = None
+        self.logger_frame.pb.config(value=0, mode='determinate')
 
     def _process_queue(self):
         try:
