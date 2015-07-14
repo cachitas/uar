@@ -3,15 +3,15 @@ UAR - Unzip Alignment Results
 =============================
 """
 
-import logging
 import gzip
 import io
+import logging
 import os
 import re
 import shutil
-import zipfile
 import threading
-
+import time
+import zipfile
 
 logger = logging.getLogger(__name__)
 
