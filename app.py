@@ -70,8 +70,8 @@ class OptionsFrame(ttk.LabelFrame):
 
     def __init__(self, master):
         super().__init__(master, text=' Options: ')
-        self.gzip_var = tk.IntVar(value=1)
-        self.tofolder_var = tk.IntVar(value=1)
+        self.gzip_var = tk.BooleanVar(value=1)
+        self.tofolder_var = tk.BooleanVar(value=1)
         self._init_ui()
 
     def _init_ui(self):
