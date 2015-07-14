@@ -174,40 +174,53 @@ class App(tk.Tk):
         else:
             # Do the task
             task, kwargs = task
-
-            if task == '_disable_input_wigets':
-                getattr(self, task)()
-
-            if task == 'update_progressbar_maximum':
-                logger.debug('Updating progressbar maximum value')
-                self.logger_frame.pb.config(**kwargs)
-
-            if task == 'update_progressbar_value':
-                logger.debug(
-                    'Updating progressbar value to {value}'.format(**kwargs))
-                self.logger_frame.pb.config(**kwargs)
-
-            if task == 'done':
-                logger.debug("Enabling 'Input' and 'Options' frames")
-                for child in self.input_frame.winfo_children():
-                    child.configure(state='normal')
-                for child in self.options_frame.winfo_children():
-                    child.configure(state='normal')
-                logger.debug("Disabling 'Extract' button")
-                self.input_frame.extract_btn.config(state='disabled')
-                logger.info("Done!")
+            try:
+                getattr(self, task)(**kwargs)
+            except AttributeError:
+                logger.exception()
 
             self.tasks_queue.task_done()
 
-            # Check quickly for another task
-            self.after(20, self._process_queue)
+            # Check for another task
+            self.after(100, self._process_queue)
 
     def _disable_input_wigets(self):
+        """Disable the input widgets.
+        This runs when the extraction process starts.
+        """
         logger.debug("Disabling 'Input' and 'Options' frames")
         for child in self.input_frame.winfo_children():
-            child.configure(state='disabled')
+            child.config(state='disabled')
         for child in self.options_frame.winfo_children():
-            child.configure(state='disabled')
+            child.config(state='disabled')
+
+    def _config_widget(self, widget, **kwargs):
+        """Configure widget.
+        This is a wrapper around `tkinter` widget's `.config()` method.
+        """
+        logger.debug("Configuring '{}': {}".format(widget, kwargs))
+        if widget == 'progressbar':
+            widget = self.logger_frame.pb
+        widget.config(**kwargs)
+
+    def _call_widget_method(self, widget, method, **kwargs):
+        logger.debug("Calling '{}.{}(kwargs={})".format(
+                     widget, method, kwargs))
+        if widget == 'progressbar':
+            widget = self.logger_frame.pb
+        getattr(widget, method)(**kwargs)
+
+    def _extraction_completed(self):
+        logger.debug("Enabling 'Input' and 'Options' frames")
+        for child in self.input_frame.winfo_children():
+            child.configure(state='normal')
+        for child in self.options_frame.winfo_children():
+            child.configure(state='normal')
+        logger.debug("Disabling 'Extract' button")
+        self.input_frame.extract_btn.config(state='disabled')
+        logger.debug("Waiting for Thread to finish")
+        self.extractor.join()  # Wait for the Thread used to finish
+        logger.info("Done!")
 
     def extract(self):
         """Extract.
