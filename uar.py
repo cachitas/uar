@@ -27,39 +27,84 @@ class UAR(threading.Thread):
 
     def run(self):
 
+        # When task starts running we send a signal to disable all
+        # other widgets in orther to prevent user input
         self.tasks_queue.put(
-            ('running', dict(state='disabled'))
+            ('_disable_input_wigets', dict())
         )
 
-        # Inspect zip file and set progressbar maximum value
-        logger.info("Inspecting '%s'", self.zipfilename)
-        inner_zipfiles = retrieve_inner_zipfiles(self.zipfilename)
+        # Change the progressbar to indeterminate mode to inspect the
+        # selected file and to create the output directory
         self.tasks_queue.put(
-            ('update_progressbar_maximum', dict(maximum=len(inner_zipfiles)))
+            ('_config_widget', dict(widget='progressbar',
+                                    mode='indeterminate',
+                                    maximum=10))
+        )
+        self.tasks_queue.put(
+            ('_call_widget_method', dict(widget='progressbar', method='start'))
+        )
+
+        # Look for the output directory.
+        output_dir = os.path.splitext(self.zipfilename)[0]
+        prepare_output_dir(output_dir)
+
+        # Inspect the zipfile given and collect the inner ones
+        inner_zipfiles = retrieve_inner_zipfiles(self.zipfilename)
+
+        # Revert the progressbar to determinate mode and set its maximum value
+        number_of_tasks = len(inner_zipfiles) + 1
+        if self.options['degzip'] == 1:
+            number_of_tasks += 1
+        if self.options['tofolder'] == 1:
+            number_of_tasks += 1
+        self.tasks_queue.put(
+            ('_call_widget_method', dict(widget='progressbar', method='stop'))
+        )
+        self.tasks_queue.put(
+            ('_config_widget', dict(widget='progressbar',
+                                    mode='determinate',
+                                    value=0,
+                                    maximum=number_of_tasks))
         )
 
         # Extract the files
-        output_dir = os.path.splitext(self.zipfilename)[0]
         with zipfile.ZipFile(self.zipfilename, 'r') as zfile:
             for i, name in enumerate(inner_zipfiles):
                 logger.info("Extracting '%s'", name)
                 zfiledata = io.BytesIO(zfile.read(name))
                 extract_files(zfiledata, self.pattern, output_dir)
+                time.sleep(.5)
                 self.tasks_queue.put(
-                    ('update_progressbar_value', dict(value=i+1))
+                    ('_call_widget_method', dict(widget='progressbar',
+                                                 method='step'))
                 )
-        logger.info("All files extracted to '{}'".format(output_dir))
 
         if self.options['degzip'] == 1:
             decompress_gzipped_files(output_dir)
             logger.info("Decompressed gzipped files")
+            self.tasks_queue.put(
+                ('_call_widget_method', dict(widget='progressbar',
+                                             method='step'))
+            )
 
         if self.options['tofolder'] == 1:
             move_files_inside_folders(output_dir)
-            logger.info("Extracted files placed in its own folder")
+            logger.info("Extracted files placed in their own folder")
+            self.tasks_queue.put(
+                ('_call_widget_method', dict(widget='progressbar',
+                                             method='step'))
+            )
+
+        logger.info("All files extracted to '{}'".format(output_dir))
 
         self.tasks_queue.put(
-            ('done', dict())
+            ('_extraction_completed', dict())
+        )
+
+        # Need to explicitly set the last value. step() can't do it
+        self.tasks_queue.put(
+            ('_config_widget', dict(widget='progressbar',
+                                    value=number_of_tasks))
         )
 
 
@@ -147,6 +192,7 @@ def decompress_gzipped_file(filepath):
     target = open(filepath[:-3], 'wb')
     with source, target:
         target.write(source.read())
+        time.sleep(.5)
     logger.debug("Removing {}".format(filepath))
     os.remove(filepath)
 
@@ -168,6 +214,7 @@ def move_files_inside_folders(directory):
         new_filepath = os.path.join(new_dir_path, filename)
         logger.debug("Moving {} to {}".format(filepath, new_filepath))
         shutil.move(filepath, new_filepath)
+        time.sleep(.5)
 
 
 if __name__ == '__main__':
