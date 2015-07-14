@@ -240,7 +240,7 @@ class App(tk.Tk):
 
 def main():
     logging.basicConfig(
-        level=logging.DEBUG,
+        level=logging.INFO,
         format=('[%(asctime)s.%(msecs)03d]'
                 ' [%(threadName)-10s]'
                 ' [%(levelname)-5s]'
