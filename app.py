@@ -228,8 +228,12 @@ class App(tk.Tk):
 
 def main():
     logging.basicConfig(
-        level=logging.INFO,
-        format='[%(asctime)s][%(threadName)s] %(message)s',
+        level=logging.DEBUG,
+        format=('[%(asctime)s.%(msecs)03d]'
+                ' [%(threadName)-10s]'
+                ' [%(levelname)-5s]'
+                ' %(name)s: %(message)s'),
+        datefmt='%H:%M:%S'
     )
     app = App()
     app.mainloop()
