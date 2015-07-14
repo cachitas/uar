@@ -223,8 +223,7 @@ class App(tk.Tk):
             },
             tasks_queue=self.tasks_queue,
         )
-
-        extractor.start()
+        self.extractor.start()
 
 
 def main():
