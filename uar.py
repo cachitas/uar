@@ -1,165 +1,249 @@
+"""
+UAR - Unzip Alignment Results
+=============================
+"""
+
 import gzip
 import io
+import logging
 import os
 import re
 import shutil
+import threading
+import time
 import zipfile
 
-import tkinter as tk
-from tkinter import filedialog
-from tkinter import ttk
+logger = logging.getLogger(__name__)
 
 
-class UAR(tk.Tk):
+class UAR(threading.Thread):
 
-    def __init__(self, parent):
+    def __init__(self, zipfilename, pattern, options, tasks_queue):
+        super().__init__()
+        self.zipfilename = zipfilename
+        self.pattern = pattern
+        self.options = options
+        self.tasks_queue = tasks_queue
 
-        tk.Tk.__init__(self, parent)
-        self.parent = parent
+    def run(self):
 
-        self.zip_filename = tk.StringVar(value='')
-        self.output_dir = tk.StringVar(value='')
-        self.gzip_var = tk.IntVar(value=1)
-        self.status_msg = tk.StringVar(value='')
+        # When task starts running we send a signal to disable all
+        # other widgets in orther to prevent user input
+        self.tasks_queue.put(
+            ('_disable_input_wigets', dict())
+        )
 
-        self.initialize()
+        # Change the progressbar to indeterminate mode to inspect the
+        # selected file and to create the output directory
+        self.tasks_queue.put(
+            ('_config_widget', dict(widget='progressbar',
+                                    mode='indeterminate',
+                                    maximum=10))
+        )
+        self.tasks_queue.put(
+            ('_call_widget_method', dict(widget='progressbar', method='start'))
+        )
 
-    def initialize(self):
-        """Initialize the GUI.
-        """
-        self.title('Unzip Alignment Results')
-        self.minsize(width=600, height=50)
+        # Look for the output directory.
+        output_dir = os.path.splitext(self.zipfilename)[0]
+        prepare_output_dir(output_dir)
 
-        self.grid()
+        # Inspect the zipfile given and collect the inner ones
+        inner_zipfiles = retrieve_inner_zipfiles(self.zipfilename)
 
-        self.open_btn = tk.Button(self, text='Select ZIP',
-                                  command=self.askopenfilename)
-        self.open_btn.grid(column=0, row=0, sticky='WE', padx=5, pady=5)
+        # Revert the progressbar to determinate mode and set its maximum value
+        number_of_tasks = len(inner_zipfiles) + 1
+        if self.options['degzip'] == 1:
+            number_of_tasks += 1
+        if self.options['tofolder'] == 1:
+            number_of_tasks += 1
+        self.tasks_queue.put(
+            ('_call_widget_method', dict(widget='progressbar', method='stop'))
+        )
+        self.tasks_queue.put(
+            ('_config_widget', dict(widget='progressbar',
+                                    mode='determinate',
+                                    value=0,
+                                    maximum=number_of_tasks))
+        )
 
-        self.open_ent = tk.Entry(self, textvariable=self.zip_filename,
-                                 state='readonly', relief='flat')
-        self.open_ent.grid(column=1, row=0, sticky='WE', padx=5, pady=5)
-
-        self.output_lbl = tk.Label(self, text='Output Location:')
-        self.output_lbl.grid(column=0, row=1, sticky='E', padx=5, pady=5)
-
-        self.output_ent = tk.Entry(self, textvariable=self.output_dir,
-                                   state='readonly', relief='flat')
-        self.output_ent.grid(column=1, row=1, sticky='WE', padx=5, pady=5)
-
-        self.options_lbl = tk.Label(self, text='Options:')
-        self.options_lbl.grid(column=0, row=2, sticky='E', padx=5, pady=5)
-
-        self.opt_gzip_chb = tk.Checkbutton(self,
-                                           text='Uncompress .gz images',
-                                           variable=self.gzip_var)
-        self.opt_gzip_chb.grid(column=1, row=2, sticky='W')
-
-        self.extract_btn = tk.Button(self, text='Extract images',
-                                     state='disabled',
-                                     command=self.extract_images)
-        self.extract_btn.grid(column=0, row=3, sticky='WE', padx=5, pady=5)
-
-        self.extract_progbar = ttk.Progressbar(self, orient='horizontal',
-                                               length=150, mode='determinate')
-        self.extract_progbar.grid(column=1, row=3, sticky='WE', padx=5, pady=5)
-
-        self.statusbar = tk.Entry(self, textvariable=self.status_msg,
-                                  state='readonly', relief='flat')
-        self.statusbar.grid(column=0, row=4, columnspan=2, sticky='WE',
-                            padx=5, pady=5)
-
-        self.grid_columnconfigure(1, weight=1)
-        self.resizable(True, False)
-
-    def askopenfilename(self):
-        """Returns the name of the file chosen.
-        """
-        file_opt = {}
-        file_opt['defaultextension'] = '.zip'
-        file_opt['filetypes'] = [('zip files', '.zip'), ('all files', '.*')]
-        file_opt['initialdir'] = '~/Downloads'
-        file_opt['initialfile'] = ''
-        file_opt['parent'] = self.parent
-        file_opt['title'] = 'Choose the zipped results'
-
-        filename = filedialog.askopenfilename(**file_opt)
-
-        if filename != '':
-            self.zip_filename.set(filename)
-            self.extract_btn.config(state='normal')
-
-            # create a folder named as the zip file to extract into
-            self.output_dir.set(os.path.splitext(self.zip_filename.get())[0])
-            if not os.path.exists(self.output_dir.get()):
-                os.mkdir(self.output_dir.get())
-        else:
-            self.extract_btn.config(state='disabled')
-
-    def extract_images(self):
-        """Extract images.
-        """
-
-        # inspect the main zip file to account for inner ones
-        files_to_extract = []
-        self.status_msg.set('Inspecting...')
-        self.update_idletasks()
-        with zipfile.ZipFile(self.zip_filename.get(), 'r') as zfile:
-            for name in zfile.namelist():
-                if re.search(r'\.zip$', name, flags=re.IGNORECASE) != None:
-                    files_to_extract.append(name)
-
-        self.extract_progbar['value'] = 0
-        self.extract_progbar['maximum'] = len(files_to_extract)
-
-        with zipfile.ZipFile(self.zip_filename.get(), 'r') as zfile:
-            for i, name in enumerate(files_to_extract):
-                self.status_msg.set('Unzipping {}'.format(
-                    os.path.basename(name)))
-
+        # Extract the files
+        with zipfile.ZipFile(self.zipfilename, 'r') as zfile:
+            for i, name in enumerate(inner_zipfiles):
+                logger.info("Extracting '%s'", name)
                 zfiledata = io.BytesIO(zfile.read(name))
-                with zipfile.ZipFile(zfiledata) as zfile2:
-                    for name2 in zfile2.namelist():
-                        filename = os.path.basename(name2)
+                extract_files(zfiledata, self.pattern, output_dir)
+                time.sleep(.5)
+                self.tasks_queue.put(
+                    ('_call_widget_method', dict(widget='progressbar',
+                                                 method='step'))
+                )
 
-                        # skip directories
-                        if not filename:
-                            continue
+        if self.options['degzip'] == 1:
+            decompress_gzipped_files(output_dir)
+            logger.info("Decompressed gzipped files")
+            self.tasks_queue.put(
+                ('_call_widget_method', dict(widget='progressbar',
+                                             method='step'))
+            )
 
-                        # filter files: only want those having 'warped'
-                        if re.search(r'_warped\.nii', name2) is None:
-                            continue
+        if self.options['tofolder'] == 1:
+            move_files_inside_folders(output_dir)
+            logger.info("Extracted files placed in their own folder")
+            self.tasks_queue.put(
+                ('_call_widget_method', dict(widget='progressbar',
+                                             method='step'))
+            )
 
-                        # copy file (taken from zipfile's extract)
-                        source = zfile2.open(name2)
-                        target = open(os.path.join(
-                            self.output_dir.get(), filename), "wb")
-                        with source, target:
-                            shutil.copyfileobj(source, target)
+        logger.info("All files extracted to '{}'".format(output_dir))
 
-                        # uncompress the image if asked to
-                        if self.gzip_var.get() == 1:
-                            self.uncompress_gzipped_file(target)
+        self.tasks_queue.put(
+            ('_extraction_completed', dict())
+        )
 
-                self.extract_progbar["value"] = i + 1
-                self.update_idletasks()
-            else:
-                self.status_msg.set('Done')
-
-    @staticmethod
-    def uncompress_gzipped_file(file_obj):
-        assert file_obj.name.endswith('.gz')
-        source = gzip.open(file_obj.name, 'rb')
-        target = open(source.name[:-3], 'wb')
-        with source, target:
-            target.write(source.read())
-        os.remove(source.name)
+        # Need to explicitly set the last value. step() can't do it
+        self.tasks_queue.put(
+            ('_config_widget', dict(widget='progressbar',
+                                    value=number_of_tasks))
+        )
 
 
-def main():
-    app = UAR(None)
-    app.mainloop()
+def extract_nested_zips(zipfilename, pattern):
+    """Extract nested zipped files.
+
+    Extracts desired files from within zipped files inside the given
+    zipped file.
+
+    The files extracted are placed inside a folder named after the
+    provided zipped file.
+    """
+
+    output_dir = os.path.splitext(zipfilename)[0]
+    prepare_output_dir(output_dir)
+
+    inner_zipfiles = retrieve_inner_zipfiles(zipfilename)
+
+    with zipfile.ZipFile(zipfilename, 'r') as zfile:
+        for i, name in enumerate(inner_zipfiles):
+            zfiledata = io.BytesIO(zfile.read(name))
+
+            extract_files(zfiledata, pattern, output_dir)
+
+
+def prepare_output_dir(output_dir):
+    """Create output directory.
+    If one directory with the same name already exists, remove it
+    and create again. There may be a better way to do this...
+    """
+    try:
+        logger.debug("Creating output directory '{}'".format(output_dir))
+        os.mkdir(output_dir)
+    except OSError:
+        logger.debug("Output directory already exists."
+                     " Removing '{}'".format(output_dir))
+        shutil.rmtree(output_dir)
+        time.sleep(.5)  # wait for the IO operations to complete
+        prepare_output_dir(output_dir)
+    else:
+        logger.debug("Output directory created '{}'".format(output_dir))
+    finally:
+        time.sleep(.5)  # wait for the IO operations to complete
+
+
+def retrieve_inner_zipfiles(zipfilename):
+    """Inspect the given zipped file and retrieve the inner ones.
+    """
+
+    inner_zipfiles = []
+
+    logger.debug('Looking for zipped files inside {}'.format(zipfilename))
+    with zipfile.ZipFile(zipfilename, 'r') as zfile:
+        for name in zfile.namelist():
+            if re.search(r'\.zip$', name, flags=re.IGNORECASE) != None:
+                inner_zipfiles.append(name)
+    logger.debug('Found {} zipped files'.format(len(inner_zipfiles)))
+    return inner_zipfiles
+
+
+def extract_files(zipfilename, pattern, output_dir):
+    """Extracts all files that match a specific `pattern` from
+    a zipped file.
+    This stores files in memory!
+    """
+
+    # Compile the pattern if needed
+    if not hasattr(pattern, 'search'):
+        pattern = re.compile(pattern)
+
+    logger.debug('Reading {}'.format(zipfilename))
+
+    with zipfile.ZipFile(zipfilename, 'r') as zfile:
+        for name in zfile.namelist():
+
+            filename = os.path.basename(name)
+
+            # skip directories
+            if not filename:
+                continue
+
+            # filter files using the given pattern
+            if pattern.search(name) is None:
+                continue
+
+            # copy file (taken from zipfile's extract)
+            source = zfile.open(name)
+            target = open(os.path.join(output_dir, filename), 'wb')
+            with source, target:
+                logger.debug("Extracting {s} to {t}".format(
+                             s=source.name, t=target.name))
+                shutil.copyfileobj(source, target)
+
+
+def decompress_gzipped_file(filepath):
+    assert filepath.endswith('.gz')
+    logger.debug("Decompressing {}".format(filepath))
+    source = gzip.open(filepath, 'rb')
+    target = open(filepath[:-3], 'wb')
+    with source, target:
+        target.write(source.read())
+        time.sleep(.5)
+    logger.debug("Removing {}".format(filepath))
+    os.remove(filepath)
+
+
+def decompress_gzipped_files(directory):
+    for filename in os.listdir(directory):
+        filepath = os.path.join(directory, filename)
+        decompress_gzipped_file(filepath)
+
+
+def move_files_inside_folders(directory):
+    pattern = re.compile(r'_(\d+)_')
+    for filename in os.listdir(directory):
+        filepath = os.path.join(directory, filename)
+
+        new_dir_name = pattern.search(filename).group(1)
+        # new_dir_name = os.path.splitext(filename)[0]
+        new_dir_path = os.path.join(directory, new_dir_name)
+        os.mkdir(new_dir_path)
+
+        new_filepath = os.path.join(new_dir_path, filename)
+        logger.debug("Moving {} to {}".format(filepath, new_filepath))
+        shutil.move(filepath, new_filepath)
+        time.sleep(.5)
 
 
 if __name__ == '__main__':
-    main()
+
+    logging.basicConfig(level=logging.DEBUG)
+
+    if os.path.exists('test'):
+        shutil.rmtree('test')
+
+    # retrieve_inner_zipfiles('test.zip')
+    # extract_files('test.zip', r'001', 't2')
+    extract_nested_zips('test.zip', r'_warped\.')
+
+    decompress_gzipped_files('test')
+
+    move_files_inside_folders('test')
