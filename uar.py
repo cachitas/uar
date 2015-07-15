@@ -218,10 +218,12 @@ def decompress_gzipped_files(directory):
 
 
 def move_files_inside_folders(directory):
+    pattern = re.compile(r'_(\d+)_')
     for filename in os.listdir(directory):
         filepath = os.path.join(directory, filename)
 
-        new_dir_name = os.path.splitext(filename)[0]
+        new_dir_name = pattern.search(filename).group(1)
+        # new_dir_name = os.path.splitext(filename)[0]
         new_dir_path = os.path.join(directory, new_dir_name)
         os.mkdir(new_dir_path)
 
